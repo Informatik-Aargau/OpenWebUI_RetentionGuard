@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Environment files
+.env
+.env_prod
+.env_stage
+.envB64_prod.txt
+.envB64_stage.txt
+.envB64_prod
+.envB64_stage
+.KUBECONFIG_stage
+.KUBECONFIG_prod
+.KUBECONFIG_prod.txt
+.KUBECONFIG_stage.txt
+
+# Virtual environments
+.venv
+.env
+
+#custom
+outputs
+GITLAB_SETUP.md

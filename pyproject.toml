@@ -1,0 +1,12 @@
+[project]
+name = "aargaugpt-retentionguard"
+version = "0.1.0"
+description = "The project implements an automated, auditable deletion routine that reconciles user data between Postgres and MS SQL, optionally fetches additional details via REST, and then performs consistent cleanup (via API and/or directly in Postgres)."
+readme = "README.md"
+requires-python = ">=3.13.2"
+dependencies = [
+    "dotenv>=0.9.9",
+    "pandas>=2.3.3",
+    "psycopg2-binary>=2.9.11",
+    "requests>=2.32.5",
+]

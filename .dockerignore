@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Environment files
+.env
+.envB64
+*.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Outputs
+outputs/
+*.csv
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+LICENCE
+
+# Test files
+tests/
+*.test.py

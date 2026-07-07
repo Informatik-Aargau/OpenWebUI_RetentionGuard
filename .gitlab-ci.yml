@@ -1,0 +1,147 @@
+stages:
+  - build
+  - deploy
+  
+default:
+  retry: 2
+  timeout: 10m
+  tags:
+    - task/fast
+    - os/linux
+    - kind/docker
+    - net/ads
+  before_script:
+    - export no_proxy="#[.....]"
+    - docker login -u $CI_REGISTRY_USER -p $CI_JOB_TOKEN $CI_REGISTRY
+    - cp "/etc/ktag-certs/#[.....]" root.pem
+    - cp "/etc/ktag-certs/#[.....]" sub.pem
+
+# Build Docker image and push to GitLab Container Registry
+build-image:
+  stage: build
+  image: docker:latest  
+  services:
+    - docker:dind
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "stage" || $CI_COMMIT_BRANCH == "prod"'
+  script:
+    - echo "Building and pushing Docker image to GitLab Container Registry"
+    #- docker pull #[.....]/base-images/python3:latest
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA 
+
+# Deploy to Kubernetes (STAGE environment)
+
+deploy-stage:
+  stage: deploy
+  #image: bitnami/kubectl:latest
+  image: #[.....]/base-images/alpine-k8s #has kubectl installed
+  environment:
+    name: stage
+  variables:
+    ENVIRONMENT: "stage"
+    CRON_SCHEDULE: "20 0 * * *"
+  before_script:
+    # Set up kubectl with the kubeconfig from GitLab CI/CD variable (file type)
+    # KUBECONFIG file already contains namespace in context
+    - mkdir -p ~/.kube
+    - |
+      if [ -z "$KUBECONFIG" ]; then
+        echo "ERROR: KUBECONFIG variable is not set. Please configure it in GitLab CI/CD Variables as a File type variable."
+        exit 1
+      fi
+    - cat "$KUBECONFIG" > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - kubectl version --client
+    - kubectl config current-context
+  script:
+    - echo "Deploying to STAGE environment"
+    
+    # Create/update docker registry secret for image pulling
+    - |
+      kubectl create secret docker-registry gitlab-#[.....]-retentionguard-registry-stage \
+        --docker-server=$CI_REGISTRY \
+        --docker-username=#[.....] \
+        --docker-password=$K8S_PULL_IMAGE \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Create/update secret with environment variables from B64_DOTENV
+    - |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: aargaugpt-retentionguard-env-stage
+      type: Opaque
+      data:
+        .env: $B64_DOTENV
+      EOF
+    
+    # Deploy CronJob
+    - export CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE
+    - export CI_COMMIT_SHORT_SHA=$CI_COMMIT_SHORT_SHA
+    - envsubst < k8s/cronjob.yaml | kubectl apply -f -
+    
+    # Show deployment status
+    - kubectl get cronjobs -l app=aargaugpt-retentionguard
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "stage"'
+      #when: manual  # No automatic deployment to stage while still testing
+
+# Deploy to Kubernetes (PROD environment)
+deploy-prod:
+  stage: deploy
+  #image: bitnami/kubectl:latest
+  image: #[.....]/base-images/alpine-k8s #has kubectl installed
+  environment:
+    name: prod
+  variables:
+    ENVIRONMENT: "prod"
+    CRON_SCHEDULE: "15 0 * * *"
+  before_script:
+    # Set up kubectl with the kubeconfig from GitLab CI/CD variable (file type)
+    # KUBECONFIG file already contains namespace in context
+    - mkdir -p ~/.kube
+    - |
+      if [ -z "$KUBECONFIG" ]; then
+        echo "ERROR: KUBECONFIG variable is not set. Please configure it in GitLab CI/CD Variables as a File type variable."
+        exit 1
+      fi
+    - cat "$KUBECONFIG" > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - kubectl version --client
+    - kubectl config current-context
+  script:
+    - echo "Deploying to PRODUCTION environment"
+    
+    # Create/update docker registry secret for image pulling
+    - |
+      kubectl create secret docker-registry gitlab-#[.....]-retentionguard-registry-prod \
+        --docker-server=$CI_REGISTRY \
+        --docker-username=#[.....] \
+        --docker-password=$K8S_PULL_IMAGE \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Create/update secret with environment variables from B64_DOTENV
+    - |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: aargaugpt-retentionguard-env-prod
+      type: Opaque
+      data:
+        .env: $B64_DOTENV
+      EOF
+    
+    # Deploy CronJob
+    - export CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE
+    - export CI_COMMIT_SHORT_SHA=$CI_COMMIT_SHORT_SHA
+    - envsubst < k8s/cronjob.yaml | kubectl apply -f -
+    
+    # Show deployment status
+    - kubectl get cronjobs -l app=aargaugpt-retentionguard
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "prod"'
+      when: manual  # Require manual approval for production
+

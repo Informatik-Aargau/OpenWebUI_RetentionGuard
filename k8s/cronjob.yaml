@@ -1,0 +1,82 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aargaugpt-retentionguard-${ENVIRONMENT}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app: aargaugpt-retentionguard
+    environment: ${ENVIRONMENT}
+spec:
+  # Schedule
+  schedule: ${CRON_SCHEDULE}
+  
+  # Time zone for the schedule (adjust as needed)
+  timeZone: "Europe/Zurich"
+  
+  # Keep last 3 successful and 1 failed job
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  # Concurrency policy: Don't run new job if previous one is still running
+  concurrencyPolicy: Forbid
+  
+  jobTemplate:
+    spec:
+      # Give the job 9 minutes to complete before timing out
+      activeDeadlineSeconds: 540
+      
+      template:
+        metadata:
+          labels:
+            app: aargaugpt-retentionguard
+            environment: ${ENVIRONMENT}
+        spec:
+          restartPolicy: OnFailure
+          
+          # Image pull secret for GitLab registry
+          imagePullSecrets:
+            - name: gitlab-aargaugpt-retentionguard-registry-${ENVIRONMENT}
+          
+          # Pod-level security context
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          
+          containers:
+          - name: retentionguard
+            image: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
+            imagePullPolicy: Always
+            
+            # Container-level security context
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: false
+              capabilities:
+                drop:
+                  - ALL
+            
+            # Mount the .env file from secret
+            volumeMounts:
+            - name: env-file
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
+            
+            # Resource limits
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          
+          # Volumes
+          volumes:
+          - name: env-file
+            secret:
+              secretName: aargaugpt-retentionguard-env-${ENVIRONMENT}
